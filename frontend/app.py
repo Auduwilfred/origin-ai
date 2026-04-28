@@ -1,91 +1,118 @@
 import streamlit as st
 import requests
 import time
-from gtts import gTTS
-import tempfile
 
 st.set_page_config(page_title="Origin AI by Origin", layout="wide")
 
 API_URL = "https://origin-ai.onrender.com"
 
-# ===== UI STYLE =====
+# ===== STYLE =====
 st.markdown("""
 <style>
 .chat-container { max-width: 800px; margin: auto; }
-.user-msg { background: #2563eb; color: white; padding: 12px; border-radius: 12px; margin: 10px 0; text-align: right; }
-.bot-msg { background: #111827; color: white; padding: 12px; border-radius: 12px; margin: 10px 0; text-align: left; }
+.user-msg {
+    background: #2563eb;
+    color: white;
+    padding: 12px;
+    border-radius: 12px;
+    margin: 10px 0;
+    text-align: right;
+}
+.bot-msg {
+    background: #111827;
+    color: white;
+    padding: 12px;
+    border-radius: 12px;
+    margin: 10px 0;
+    text-align: left;
+}
+.action-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("Cypher")
 
-# ===== MEMORY =====
+# ===== SESSION =====
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ===== FILE UPLOAD =====
-uploaded_file = st.file_uploader("📎 Upload file (PDF, image, code)", type=["pdf", "png", "jpg", "txt", "py"])
-
-file_content = ""
-if uploaded_file:
-    try:
-        file_content = uploaded_file.read().decode("utf-8", errors="ignore")
-        st.success("File loaded successfully")
-    except:
-        st.warning("Binary file uploaded (image/PDF). Will send as-is.")
-
-# ===== CHAT DISPLAY =====
+# ===== DISPLAY CHAT =====
 for msg in st.session_state.messages:
     if msg["role"] == "user":
         st.markdown(f'<div class="user-msg">{msg["content"]}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="bot-msg">{msg["content"]}</div>', unsafe_allow_html=True)
 
-# ===== INPUT =====
-user_input = st.chat_input("Ask Origin AI...")
+# ===== ACTION BAR =====
+col1, col2, col3 = st.columns([1, 6, 1])
 
-col1, col2 = st.columns(2)
-
-# ===== VOICE INPUT BUTTON =====
+# ➕ LEFT MENU
 with col1:
-    if st.button("🎤 Voice Input"):
-        st.warning("Voice input works best locally (browser mic limitations on cloud)")
+    with st.expander("➕"):
+        st.write("### Tools")
+        tool = st.selectbox(
+            "Choose action",
+            [
+                "Camera",
+                "Photos",
+                "Files",
+                "Create Image",
+                "Thinking",
+                "Deep Research",
+                "Web Search",
+                "Quizzes",
+                "Explore Apps",
+                "Features"
+            ]
+        )
 
-# ===== SEND =====
-if user_input:
-    full_input = user_input
+        if tool:
+            st.info(f"{tool} selected")
 
-    if file_content:
-        full_input += f"\n\n[Attached File Content]\n{file_content[:3000]}"
+# 💬 INPUT CENTER
+with col2:
+    user_input = st.text_input("Ask Origin AI...", label_visibility="collapsed")
 
-    st.session_state.messages.append({"role": "user", "content": full_input})
+# 🎤 RIGHT SIDE
+with col3:
+    if st.button("🎤"):
+        st.warning("Voice input coming soon (browser mic limitations on Streamlit Cloud)")
+
+# ===== SEND BUTTON =====
+if st.button("Send") and user_input:
+
+    st.session_state.messages.append({
+        "role": "user",
+        "content": user_input
+    })
 
     try:
         res = requests.post(
             f"{API_URL}/chat",
-            json={"message": full_input}
+            json={"message": user_input}
         )
         reply = res.json().get("response", "No response")
 
     except Exception as e:
         reply = f"Error: {e}"
 
-    # ===== STREAMING EFFECT =====
+    # Streaming effect
     streamed = ""
     placeholder = st.empty()
 
     for char in reply:
         streamed += char
-        placeholder.markdown(f'<div class="bot-msg">{streamed}</div>', unsafe_allow_html=True)
+        placeholder.markdown(
+            f'<div class="bot-msg">{streamed}</div>',
+            unsafe_allow_html=True
+        )
         time.sleep(0.005)
 
-    st.session_state.messages.append({"role": "assistant", "content": reply})
-
-    # ===== VOICE OUTPUT =====
-    try:
-        tts = gTTS(reply)
-        temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        tts.save(temp_audio.name)
-        st.audio(temp_audio.name)
-    except:
-        pass
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": reply
+    })
