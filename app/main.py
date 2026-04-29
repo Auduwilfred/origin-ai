@@ -4,65 +4,56 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from app.core.system_prompt import COMPANY_SYSTEM_PROMPT
 
-# ===== CONFIG =====
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+model = genai.GenerativeModel(MODEL)
 
-app = FastAPI(title="Origin AI by Origin")
+app = FastAPI()
 
 class ChatRequest(BaseModel):
     message: str
+    tool: str = "Normal Chat"
 
-@app.get("/")
-def root():
-    return {
-        "message": "ask anything"
-    }
+# ===== TOOL HANDLERS =====
 
-# ===== PRIMARY MODEL =====
-def call_gemini(prompt: str):
-    response = model.generate_content(prompt)
-    return response.text
+def code_generator(prompt):
+    return model.generate_content(
+        f"{COMPANY_SYSTEM_PROMPT}\n\nGenerate production-grade code:\n{prompt}"
+    ).text
 
-# ===== FALLBACK MODEL =====
-def fallback_response(user_input: str):
-    return f"""
-Cypher (fallback mode):
+def thinking_mode(prompt):
+    return model.generate_content(
+        f"{COMPANY_SYSTEM_PROMPT}\n\nThink step-by-step deeply:\n{prompt}"
+    ).text
 
-I’m currently experiencing high load or a temporary issue with the main AI system.
+def web_search(prompt):
+    return model.generate_content(
+        f"{COMPANY_SYSTEM_PROMPT}\n\nSearch and summarize latest info:\n{prompt}"
+    ).text
 
-{user_input}
+def normal_chat(prompt):
+    return model.generate_content(
+        f"{COMPANY_SYSTEM_PROMPT}\n\nUser:\n{prompt}"
+    ).text
 
-Please try again shortly.
-"""
-
-# ===== CHAT ENDPOINT =====
+# ===== ROUTER =====
 @app.post("/chat")
 def chat(req: ChatRequest):
-    full_prompt = f"""
-{COMPANY_SYSTEM_PROMPT}
-
-USER:
-{req.message}
-"""
-
     try:
-        # 🔥 PRIMARY (Gemini)
-        result = call_gemini(full_prompt)
+        if req.tool == "Code Generator":
+            result = code_generator(req.message)
+
+        elif req.tool == "Thinking Mode":
+            result = thinking_mode(req.message)
+
+        elif req.tool == "Web Search":
+            result = web_search(req.message)
+
+        else:
+            result = normal_chat(req.message)
+
         return {"response": result}
 
     except Exception as e:
-        print("Gemini failed:", str(e))
-
-        try:
-            # 🔁 FALLBACK
-            result = fallback_response(req.message)
-            return {"response": result}
-
-        except Exception as fallback_error:
-            print("Fallback failed:", str(fallback_error))
-
-            return {
-                "response": "Cypher is temporarily unavailable. Please try again shortly."
-            }
+        return {"response": f"Error: {str(e)}"}
