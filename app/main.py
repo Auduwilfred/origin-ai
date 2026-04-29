@@ -32,11 +32,9 @@ Cypher (fallback mode):
 
 I’m currently experiencing high load or a temporary issue with the main AI system.
 
-Here’s a quick response based on your request:
-
 {user_input}
 
-Please try again shortly for a more detailed answer.
+Please try again shortly.
 """
 
 # ===== CHAT ENDPOINT =====
