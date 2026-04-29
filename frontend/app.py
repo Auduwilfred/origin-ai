@@ -46,8 +46,7 @@ if user_input:
             res = requests.post(
                 f"{API_URL}/chat",
                 json={
-                    "message": user_input,
-                    "tool": tool
+                    "message": user_input
                 }
             )
 
