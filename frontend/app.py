@@ -8,7 +8,6 @@ st.set_page_config(page_title="Cypher by Origin", layout="wide")
 
 # ===== SIDEBAR =====
 with st.sidebar:
-    st.image("frontend/assets/origin_logo.jpg", width=80)
     st.title("Cypher")
 
     if st.button("➕ New Chat"):
