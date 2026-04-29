@@ -2,58 +2,111 @@ import os
 import google.generativeai as genai
 from fastapi import FastAPI
 from pydantic import BaseModel
+from typing import Optional
+
+# ===== INTERNAL IMPORTS =====
 from app.core.system_prompt import COMPANY_SYSTEM_PROMPT
+from app.agents.supervisor import route_task
+from app.agents.chat_agent import chat_agent
+from app.agents.build_agent import build_agent
+from app.agents.research_agent import research_agent
+from app.agents.file_agent import file_agent
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# ===== CONFIG =====
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
-model = genai.GenerativeModel(MODEL)
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel(MODEL_NAME)
 
-app = FastAPI()
+# ===== FASTAPI APP =====
+app = FastAPI(
+    title="Origin AI by Origin",
+    description="Cypher — multi-agent AI system",
+    version="1.0.0"
+)
 
+# ===== REQUEST MODEL =====
 class ChatRequest(BaseModel):
     message: str
-    tool: str = "Normal Chat"
+    file_content: Optional[str] = None  # for future file uploads
 
-# ===== TOOL HANDLERS =====
+# ===== HEALTH CHECK =====
+@app.get("/")
+def root():
+    return {
+        "message": "ask anything"
+    }
 
-def code_generator(prompt):
-    return model.generate_content(
-        f"{COMPANY_SYSTEM_PROMPT}\n\nGenerate production-grade code:\n{prompt}"
-    ).text
+# ===== PRIMARY GEMINI CALL =====
+def call_gemini(prompt: str):
+    response = model.generate_content(prompt)
+    return response.text
 
-def thinking_mode(prompt):
-    return model.generate_content(
-        f"{COMPANY_SYSTEM_PROMPT}\n\nThink step-by-step deeply:\n{prompt}"
-    ).text
+# ===== SAFE FALLBACK =====
+def fallback_response(user_input: str):
+    return f"""
+Cypher (fallback mode):
 
-def web_search(prompt):
-    return model.generate_content(
-        f"{COMPANY_SYSTEM_PROMPT}\n\nSearch and summarize latest info:\n{prompt}"
-    ).text
+I'm experiencing a temporary issue with the main intelligence system.
 
-def normal_chat(prompt):
-    return model.generate_content(
-        f"{COMPANY_SYSTEM_PROMPT}\n\nUser:\n{prompt}"
-    ).text
+Here’s a quick response based on your request:
+{user_input}
 
-# ===== ROUTER =====
+Please try again shortly for a more detailed answer.
+"""
+
+# ===== CHAT ENDPOINT =====
 @app.post("/chat")
 def chat(req: ChatRequest):
+    task = route_task(req.message)
+
     try:
-        if req.tool == "Code Generator":
-            result = code_generator(req.message)
+        # ===== AGENT ROUTING =====
+        if task == "build":
+            result = build_agent(model, COMPANY_SYSTEM_PROMPT, req.message)
 
-        elif req.tool == "Thinking Mode":
-            result = thinking_mode(req.message)
+        elif task == "research":
+            result = research_agent(model, COMPANY_SYSTEM_PROMPT, req.message)
 
-        elif req.tool == "Web Search":
-            result = web_search(req.message)
+        elif task == "file":
+            result = file_agent(
+                model,
+                COMPANY_SYSTEM_PROMPT,
+                req.message,
+                req.file_content or ""
+            )
 
         else:
-            result = normal_chat(req.message)
+            result = chat_agent(model, COMPANY_SYSTEM_PROMPT, req.message)
 
-        return {"response": result}
+        # ===== BASIC VALIDATION =====
+        if not result or len(result.strip()) == 0:
+            raise ValueError("Empty response from model")
+
+        return {
+            "status": "success",
+            "agent": task,
+            "response": result
+        }
 
     except Exception as e:
-        return {"response": f"Error: {str(e)}"}
+        print("Primary system failed:", str(e))
+
+        try:
+            # ===== FALLBACK =====
+            fallback = fallback_response(req.message)
+
+            return {
+                "status": "fallback",
+                "agent": "fallback",
+                "response": fallback
+            }
+
+        except Exception as fallback_error:
+            print("Fallback failed:", str(fallback_error))
+
+            return {
+                "status": "error",
+                "response": "Cypher is temporarily unavailable. Please try again shortly."
+            }
